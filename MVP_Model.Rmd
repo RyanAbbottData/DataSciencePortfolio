@@ -1,0 +1,245 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+# Run this befor every session
+Sys.setenv("VROOM_CONNECTION_SIZE" = 262144)
+library("nbastatR")
+library("dplyr")
+library("tidyverse")
+library("gt")
+library("webshot2")
+```
+```{r}
+Sys.setenv("VROOM_CONNECTION_SIZE" = 262144)
+
+gamedata <- game_logs(seasons = 2013:2022)
+gamedata <- mutate(gamedata, isWin = case_when(outcomeGame == "W" ~ 1,
+                                               outcomeGame == "L" ~ 0), isGame = 1)
+gamedata %>% select(outcomeGame, isWin)
+gamedata <- gamedata  %>% group_by(yearSeason) %>% group_split(gamedata)
+training_data = tibble()
+for(x in 1:10) {
+  print("SEASON 1")
+  print("-----------------------------------------")
+  wins <- aggregate(gamedata[[x]]$isWin, list(gamedata[[x]]$namePlayer), sum)
+  total_games <- aggregate(gamedata[[x]]$isGame, list(gamedata[[x]]$namePlayer), sum)
+  pts <- aggregate(gamedata[[x]]$pts, list(gamedata[[x]]$namePlayer), mean)
+  ast <- aggregate(gamedata[[x]]$ast, list(gamedata[[x]]$namePlayer), mean)
+  reb <- aggregate(gamedata[[x]]$treb, list(gamedata[[x]]$namePlayer), mean)
+  new_df <- tibble(
+    names = pts$Group.1,
+    pts = pts$x,
+    ast = ast$x,
+    reb = reb$x,
+    wins = wins$x,
+    total_games = total_games$x,
+    win_pct = wins/total_games,
+    year = 2012+x
+  )
+  training_data <- bind_rows(training_data, new_df)
+}
+training_data
+#write.csv(training_data, "MVP_Model_Training_data.csv", row.names = FALSE)
+```
+
+
+```{r}
+library("ggplot2")
+
+#Plots and creating categorical labels
+data <- read_csv("MVP_Model_Training_data.csv")
+
+#data_names <- data %>% select(year, names)
+
+
+
+data <- data %>% replace_na(list(mvp=0))
+data <- mutate(data, is_mvp = case_when(mvp == 0 ~ "NO",
+                                        mvp == 1 ~ "YES"))
+
+data_normalized <- mutate(data, pts = scale(pts), ast = scale(ast), reb = scale(reb), win_pct = scale(win_pct))
+data_normalized
+#arrange(setdiff(data_names, data_rosters), names)
+#999999999999999999999999999999999;data <- mutate(data, team = )
+#df_rosters <- seasons_rosters(2013:2022)
+#data$team <- data_rosters
+
+
+
+
+#data
+#data_rosters <- arrange(data_rosters, namePlayer)
+#data <- arrange(data, names)
+#data <- mutate(data, team = )
+#data_rosters
+#data$team = data_rosters$slugTeam
+#filter(data, names == (c(arrange(setdiff(data_names, data_rosters), names))))
+#c(setdiff(data$names, data_rosters$namePlayer))
+#data[which(!(data_rosters$namePlayer %in% data$names))]
+#write.csv(df_rosters, "Team_Rosters_2013_2022.csv", row.names = FALSE)
+ggplot(data, aes(x=is_mvp, y=win_pct, fill=is_mvp)) + geom_boxplot() + guides(color = guide_legend(title = "Is MVP")) + xlab("Is MVP") + ylab("Win Percentage") + ggtitle("Distribution of Win Percentages in Games Played, non MVPs and MVPs") + labs(fill="Is MVP")
+ggsave("winpct_boxplot.png")
+
+ggplot(data, aes(x=is_mvp, y=pts, fill=is_mvp)) + geom_boxplot() + guides(color = guide_legend(title = "Is MVP")) + xlab("Is MVP") + ylab("Points Per Game") + ggtitle("Distribution of Points Per Game Scored, non MVPs and MVPs") + labs(fill="Is MVP")
+
+ggplot(data, aes(x=pts,y=ast,color=is_mvp,label=names)) + geom_point() +  geom_text(aes(label=ifelse(mvp==1,as.character(names),'')),hjust=0,vjust=0, size=2) + guides(color = guide_legend(title = "Is MVP")) + ggtitle("Points Per Game Scored Compared to Assists Per Game") + ylab("Assists Per Game") + xlab("Points Per Game")
+
+                                                                                    
+ggplot(data, aes(x=pts,y=reb,color=is_mvp,label=names)) + geom_point() +  geom_text(aes(label=ifelse(mvp==1,as.character(names),'')),hjust=0,vjust=0, size=2) + guides(color = guide_legend(title = "Is MVP")) + ggtitle("Points Per Game Scored Compared to Rebounds Per Game") + ylab("Rebounds Per Game") + xlab("Points Per Game")
+
+ggplot(data_normalized, aes(x=pts + ast + reb + win_pct)) + geom_density(alpha=.2, fill="#FF6666") 
+
+ggplot(data_normalized, aes(x=pts)) +
+    geom_histogram(binwidth=.5, colour="black", fill="white")
+
+
+```
+
+
+```{r}
+#Analyzing the dataset in various ways
+
+#Finding the mean PPG of all players and MVPs
+mean(data$pts)
+mean(filter(data, mvp == 1)$pts)
+
+#Finding highest ppg of non-MVPS
+arrange(filter(data, mvp == 1), desc(pts))
+arrange(filter(data, mvp == 0), desc(pts))
+
+#Taking mean ppg of top 10 non-mvp scorers
+mean(head(arrange(filter(data, mvp == 0), desc(pts)), 50)$pts)
+```
+
+```{r}
+#Finding mean APG of all players and MVPs
+mean(data$ast)
+mean(filter(data, mvp == 1)$ast)
+```
+
+```{r}
+#Finding mean RPG of all players and MVPs
+mean(data$reb)
+mean(filter(data, mvp == 1)$reb)
+```
+
+```{r}
+#Finding mean win percentage of all players and MVPs
+mean(filter(data, mvp == 1)$win_pct)
+mean(filter(data, mvp == 1)$wins)
+
+#Finding mean number of total games played
+mean(filter(data, mvp == 1)$total_games)
+```
+
+```{r}
+ga <- data %>% filter(names == 'Giannis Antetokounmpo', year == 2019 | year == 2020 | year == 2021 | year == 2022)
+
+lbj <- data %>% filter(names == 'LeBron James', year == 2013 | year == 2014 | year == 2015 | year == 2016)
+
+sc <- data %>% filter(names == 'Stephen Curry', year == 2015 | year == 2016 | year == 2017 | year == 2018)
+
+
+
+table <- bind_rows(as_tibble(ga), lbj, sc) %>% gt() %>% tab_header(title = "Filler") %>% fmt_number(columns = c(pts, ast, reb, wins, total_games, win_pct, year))
+table %>% gtsave(filename = "test_table.png", expand = 10)
+```
+
+```{r}
+#Building Model
+#Creating Training and Testing Data
+current_data <- game_logs(seasons = 2023)
+current_data <- mutate(current_data, isWin = case_when(outcomeGame == "W" ~ 1,
+                                               outcomeGame == "L" ~ 0), isGame = 1)
+
+
+#teams_rosters(seasons = 2013:2022, nest_data = F, return_message = T)
+#dictionary_bref_players(
+
+wins <- aggregate(current_data$isWin, list(current_data$namePlayer), sum)
+total_games <- aggregate(current_data$isGame, list(current_data$namePlayer), sum)
+pts <- aggregate(current_data$pts, list(current_data$namePlayer), mean)
+ast <- aggregate(current_data$ast, list(current_data$namePlayer), mean)
+reb <- aggregate(current_data$treb, list(current_data$namePlayer), mean)
+current_season_df <- tibble(
+  names = pts$Group.1,
+  pts = pts$x,
+  ast = ast$x,
+  reb = reb$x,
+  wins = wins$x,
+  total_games = total_games$x,
+  win_pct = wins/total_games,
+  year = 2023
+)
+
+
+current_season_df_normalized <- mutate(current_season_df, pts = scale(pts), ast = scale(ast), reb = scale(reb), win_pct = scale(win_pct))
+current_season_df_normalized
+
+
+sample <- sample(c(TRUE, FALSE), nrow(data), replace=TRUE, prob=c(0.7,0.3))
+train <- data[sample, ]
+test <- data[!sample, ]
+
+sample_normalized <- sample(c(TRUE, FALSE), nrow(data_normalized), replace=TRUE, prob=c(0.7,0.3))
+train_normalized <- data_normalized[sample, ]
+test_normalized <- data_normalized[!sample, ]
+
+logistic_model <- glm(mvp ~ pts + ast + reb + win_pct,
+                      data = train,
+                      family = "binomial")
+logistic_model_normalized <- glm(mvp ~ pts + ast + reb + win_pct,
+                      data = train_normalized,
+                      family = "binomial")
+
+summary(logistic_model)
+summary(logistic_model_normalized)
+
+test_row <- tribble(
+      ~pts, ~ast, ~reb,
+      35, 7, 8
+)
+
+predictions <- predict(logistic_model,
+                              current_season_df,
+                              type = "response")
+predictions_normalized <- predict(logistic_model_normalized,
+                              current_season_df_normalized,
+                              type = "response")
+
+
+current_season_df <- mutate(current_season_df, is_mvp_candidate =  case_when(c(predictions) > 0.2 ~ 1,
+                                                                     c(predictions) < 0.2 ~ 0),
+                            mvp_odds = sprintf('%3f', c(predictions)))
+
+current_season_df_normalized <- mutate(current_season_df_normalized, is_mvp_candidate =  case_when(c(predictions) > 0.2 ~ 1,
+                                                                     c(predictions) < 0.2 ~ 0),
+                            mvp_odds = sprintf('%3f', c(predictions)))
+
+mvp_data <- filter(current_season_df_normalized, is_mvp_candidate == 1)
+mvp_data <- summarise(mvp_data, mean = mean(pts+ast+reb+win_pct))
+mvp_data
+
+#sprintf('%3f', c(predictions)))
+#ggplot(current_season_df_normalized, aes(x=pts + ast + reb, y=is_mvp_candidate)) + geom_point() + stat_smooth(method = glm, color="green", se=FALSE, method.args = list(family=binomial)) + geom_text(aes(label=ifelse(is_mvp_candidate==1,as.character(names),'')),hjust=0,vjust=0, size=2) 
+
+ggplot(current_season_df_normalized, aes(x=pts + ast + reb + win_pct)) + geom_density(alpha=.2, fill="#FF6666") + geom_vline(aes(xintercept=0), linetype="dashed", label="All Players") + geom_vline(aes(xintercept=mvp_data$mean), linetype="dashed") + ggtitle("Density Curve of the Normalized Distribution of Cumulative Player Statistics")
+
+#table <- head(arrange(current_season_df, desc(mvp_odds)), 10) %>% gt() %>% tab_header(title = "Predicted Top 10 MVP Standings, 2021-2022") %>% fmt_number(columns = c(pts, ast, reb, wins, total_games, win_pct))
+#table %>% gtsave(filename = "MVP_Predictions_2022_Table.png", expand = 10)
+#pct = sprintf("%3f", mvp_odds / sum(mvp_odds))
+arrange(current_season_df, desc(mvp_odds))
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
