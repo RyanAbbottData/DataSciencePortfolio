@@ -5,4 +5,6 @@ This directory contains several sports data analytics projects I've worked on ov
 ## COVID-19 Detection in Lungs
 This project employs TensorFlow and a convolutional neural network. In this directory contains Python code that attempts to classify X-ray images of lungs as those afflicted by COVID-19, Pneumonia, or normal lungs. 
 ## Predicting Frequency of Crimes in Chicago
+In this notebook, I attempt to generate a time-series regression model that predicts the frequency of theft, robbery, and burglary crimes occuring at residences in Chicago. 
 ## Determining the Spending Habits of Online Shoppers
+In this notebook, I use Google Analytics from an online shop to build a classifier that predicts a customer's buying habits.
