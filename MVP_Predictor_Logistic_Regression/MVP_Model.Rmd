@@ -1,14 +1,19 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output: 
+    html_document:
+      toc: yes
+      toc_float: yes
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
 ```{r}
 # Run this befor every session
+install.packages("nbastatR")
 Sys.setenv("VROOM_CONNECTION_SIZE" = 262144)
 library("nbastatR")
 library("dplyr")
@@ -16,78 +21,67 @@ library("tidyverse")
 library("gt")
 library("webshot2")
 ```
-```{r}
-Sys.setenv("VROOM_CONNECTION_SIZE" = 262144)
-
-gamedata <- game_logs(seasons = 2013:2022)
-gamedata <- mutate(gamedata, isWin = case_when(outcomeGame == "W" ~ 1,
-                                               outcomeGame == "L" ~ 0), isGame = 1)
-gamedata %>% select(outcomeGame, isWin)
-gamedata <- gamedata  %>% group_by(yearSeason) %>% group_split(gamedata)
-training_data = tibble()
-for(x in 1:10) {
-  print("SEASON 1")
-  print("-----------------------------------------")
-  wins <- aggregate(gamedata[[x]]$isWin, list(gamedata[[x]]$namePlayer), sum)
-  total_games <- aggregate(gamedata[[x]]$isGame, list(gamedata[[x]]$namePlayer), sum)
-  pts <- aggregate(gamedata[[x]]$pts, list(gamedata[[x]]$namePlayer), mean)
-  ast <- aggregate(gamedata[[x]]$ast, list(gamedata[[x]]$namePlayer), mean)
-  reb <- aggregate(gamedata[[x]]$treb, list(gamedata[[x]]$namePlayer), mean)
-  new_df <- tibble(
-    names = pts$Group.1,
-    pts = pts$x,
-    ast = ast$x,
-    reb = reb$x,
-    wins = wins$x,
-    total_games = total_games$x,
-    win_pct = wins/total_games,
-    year = 2012+x
-  )
-  training_data <- bind_rows(training_data, new_df)
-}
-training_data
-#write.csv(training_data, "MVP_Model_Training_data.csv", row.names = FALSE)
-```
 
 
+
+## Exploratory Data Analysis
+
+The following chunk imports the dataset that I will be using for this project. Because the creation of the dataset is memory intensive and takes several minutes to complete, I have already created and saved it as a CSV file. The code used for this process can be found in 'create_training_dataset.R'.
 ```{r}
 library("ggplot2")
 
-#Plots and creating categorical labels
-data <- read_csv("MVP_Model_Training_data.csv")
 
-#data_names <- data %>% select(year, names)
+data <- read_csv("MVP_Model_Training_data.csv", show_col_types = FALSE)
+```
 
-
-
+First, the label must be converted into a numeric instead of a factor.
+```{r}
 data <- data %>% replace_na(list(mvp=0))
 data <- mutate(data, is_mvp = case_when(mvp == 0 ~ "NO",
                                         mvp == 1 ~ "YES"))
+```
 
+
+# Measures of Variation and Outliers
+
+Next, I calculated the z-scores of each feature, and created a new dataset. With this, I can compare the data to each other. 
+```{r}
 data_normalized <- mutate(data, pts = scale(pts), ast = scale(ast), reb = scale(reb), win_pct = scale(win_pct))
-data_normalized
-#arrange(setdiff(data_names, data_rosters), names)
-#999999999999999999999999999999999;data <- mutate(data, team = )
-#df_rosters <- seasons_rosters(2013:2022)
-#data$team <- data_rosters
+head(data_normalized)
+```
+
+To find some potential MVP candidates in the training dataset, I filtered the data to find players who have averages that are over 2 standard deviations away from the mean of the respective stats. In other words, finding instances where z > 2 or z < -2.
+```{r}
+pts_outliers <- arrange(filter(data_normalized, abs(pts) > 3), desc(pts))
+ast_outliers <- arrange(filter(data_normalized, abs(ast) > 3), desc(ast))
+reb_outliers <- arrange(filter(data_normalized, abs(reb) > 3), desc(reb))
+
+head(pts_outliers)
+head(ast_outliers)
+head(reb_outliers)
+```
+
+The relative frequency of MVPs in each statistical category are:
+```{r}
+sum(pts_outliers$mvp) / nrow(pts_outliers)
+sum(ast_outliers$mvp) / nrow(ast_outliers)
+sum(reb_outliers$mvp) / nrow(reb_outliers)
+```
 
 
+It seems, unsurprisingly, that points are the most important factor in determining an MVP. Assists and rebounds are important, too.
 
-
-#data
-#data_rosters <- arrange(data_rosters, namePlayer)
-#data <- arrange(data, names)
-#data <- mutate(data, team = )
-#data_rosters
-#data$team = data_rosters$slugTeam
-#filter(data, names == (c(arrange(setdiff(data_names, data_rosters), names))))
-#c(setdiff(data$names, data_rosters$namePlayer))
-#data[which(!(data_rosters$namePlayer %in% data$names))]
-#write.csv(df_rosters, "Team_Rosters_2013_2022.csv", row.names = FALSE)
+Visualizations of these distributions are included below:
+```{r}
 ggplot(data, aes(x=is_mvp, y=win_pct, fill=is_mvp)) + geom_boxplot() + guides(color = guide_legend(title = "Is MVP")) + xlab("Is MVP") + ylab("Win Percentage") + ggtitle("Distribution of Win Percentages in Games Played, non MVPs and MVPs") + labs(fill="Is MVP")
 ggsave("winpct_boxplot.png")
 
 ggplot(data, aes(x=is_mvp, y=pts, fill=is_mvp)) + geom_boxplot() + guides(color = guide_legend(title = "Is MVP")) + xlab("Is MVP") + ylab("Points Per Game") + ggtitle("Distribution of Points Per Game Scored, non MVPs and MVPs") + labs(fill="Is MVP")
+
+ggplot(data, aes(x=is_mvp, y=reb, fill=is_mvp)) + geom_boxplot() + guides(color = guide_legend(title = "Is MVP")) + xlab("Is MVP") + ylab("Rebounds Per Game") + ggtitle("Distribution of Rebounds Per Game Scored, non MVPs and MVPs") + labs(fill="Is MVP")
+
+ggplot(data, aes(x=is_mvp, y=ast, fill=is_mvp)) + geom_boxplot() + guides(color = guide_legend(title = "Is MVP")) + xlab("Is MVP") + ylab("Assists Per Game") + ggtitle("Distribution of Assists Per Game Scored, non MVPs and MVPs") + labs(fill="Is MVP")
+
 
 ggplot(data, aes(x=pts,y=ast,color=is_mvp,label=names)) + geom_point() +  geom_text(aes(label=ifelse(mvp==1,as.character(names),'')),hjust=0,vjust=0, size=2) + guides(color = guide_legend(title = "Is MVP")) + ggtitle("Points Per Game Scored Compared to Assists Per Game") + ylab("Assists Per Game") + xlab("Points Per Game")
 
@@ -96,13 +90,11 @@ ggplot(data, aes(x=pts,y=reb,color=is_mvp,label=names)) + geom_point() +  geom_t
 
 ggplot(data_normalized, aes(x=pts + ast + reb + win_pct)) + geom_density(alpha=.2, fill="#FF6666") 
 
-ggplot(data_normalized, aes(x=pts)) +
-    geom_histogram(binwidth=.5, colour="black", fill="white")
 
 
 ```
 
-
+Now for measures of central tendency. Mean and median are included, as MVPs and MVP caliber players heavily skew the data.
 ```{r}
 #Analyzing the dataset in various ways
 
@@ -110,24 +102,29 @@ ggplot(data_normalized, aes(x=pts)) +
 mean(data$pts)
 mean(filter(data, mvp == 1)$pts)
 
-#Finding highest ppg of non-MVPS
-arrange(filter(data, mvp == 1), desc(pts))
-arrange(filter(data, mvp == 0), desc(pts))
-
-#Taking mean ppg of top 10 non-mvp scorers
-mean(head(arrange(filter(data, mvp == 0), desc(pts)), 50)$pts)
+#Finding the median PPG of all players and MVPs
+median(data$pts)
+median(filter(data, mvp==1)$pts)
 ```
 
 ```{r}
 #Finding mean APG of all players and MVPs
 mean(data$ast)
 mean(filter(data, mvp == 1)$ast)
+
+#Finding the median APG of all players and MVPs
+median(data$ast)
+median(filter(data, mvp==1)$ast)
 ```
 
 ```{r}
 #Finding mean RPG of all players and MVPs
 mean(data$reb)
 mean(filter(data, mvp == 1)$reb)
+
+#Finding the median RPG of all players and MVPs
+median(data$reb)
+median(filter(data, mvp==1)$reb)
 ```
 
 ```{r}
@@ -135,10 +132,17 @@ mean(filter(data, mvp == 1)$reb)
 mean(filter(data, mvp == 1)$win_pct)
 mean(filter(data, mvp == 1)$wins)
 
-#Finding mean number of total games played
-mean(filter(data, mvp == 1)$total_games)
+#Finding the median win pct of all players and MVPs
+median(data$pts)
+median(filter(data, mvp==1)$pts)
 ```
 
+
+Finding mean number of total games played:
+```{r}
+mean(filter(data, mvp == 1)$total_games)
+```
+In this next section, I will examine whether voter fatigue may be an important factor in MVP considerations. These are the 2 players who had multiple consecutive MVPs within the scope of the dataset, and the following 2 (or 3, in the case of Lebron James, whose first of two consecutive MVPS from 2012-2014 was not included on this version of the project):
 ```{r}
 ga <- data %>% filter(names == 'Giannis Antetokounmpo', year == 2019 | year == 2020 | year == 2021 | year == 2022)
 
@@ -149,19 +153,28 @@ sc <- data %>% filter(names == 'Stephen Curry', year == 2015 | year == 2016 | ye
 
 
 table <- bind_rows(as_tibble(ga), lbj, sc) %>% gt() %>% tab_header(title = "Filler") %>% fmt_number(columns = c(pts, ast, reb, wins, total_games, win_pct, year))
-table %>% gtsave(filename = "test_table.png", expand = 10)
-```
 
+table
+#table %>% gtsave(filename = "test_table.png", expand = 10)
+```
+A common trend with each of these cases is the decline in win percentage in the years following their consecutive MVPs. 
+
+Examining these 3 players individually, Giannis Antetokounmpo's averages hovered around the same range for all 4 years. For him, the main difference is win percentage. As for Stephen Curry, the reason might be the most obvious; the arrival of Kevin Durant in Golden State took shots away from curry. On top of that, their win percentage was worse than his MVP seasons. Lebron James recorded quite similar averages during all 4 seasons, but the only season his personal win percentage was over 80% was his MVP season in 2013. Clearly, regardless of the quantity of points, rebounds, and assists a player records, a low win percentage will exclude them from consideration in most cases.
+
+
+
+
+## Applying the model to the current season
+
+With lots of information extracted from the data from some exploratory data analysis, the model can now be applied to the 2023 season thus far.
 ```{r}
 #Building Model
 #Creating Training and Testing Data
+#source("game_logs.R")
+?nbastatR
 current_data <- game_logs(seasons = 2023)
 current_data <- mutate(current_data, isWin = case_when(outcomeGame == "W" ~ 1,
                                                outcomeGame == "L" ~ 0), isGame = 1)
-
-
-#teams_rosters(seasons = 2013:2022, nest_data = F, return_message = T)
-#dictionary_bref_players(
 
 wins <- aggregate(current_data$isWin, list(current_data$namePlayer), sum)
 total_games <- aggregate(current_data$isGame, list(current_data$namePlayer), sum)
@@ -179,6 +192,7 @@ current_season_df <- tibble(
   year = 2023
 )
 
+current_season_df
 
 current_season_df_normalized <- mutate(current_season_df, pts = scale(pts), ast = scale(ast), reb = scale(reb), win_pct = scale(win_pct))
 current_season_df_normalized
@@ -237,9 +251,3 @@ ggplot(current_season_df_normalized, aes(x=pts + ast + reb + win_pct)) + geom_de
 #pct = sprintf("%3f", mvp_odds / sum(mvp_odds))
 arrange(current_season_df, desc(mvp_odds))
 ```
-
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
-
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
