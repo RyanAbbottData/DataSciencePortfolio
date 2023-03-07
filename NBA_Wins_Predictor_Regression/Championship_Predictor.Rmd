@@ -1,0 +1,136 @@
+---
+title: "Championship_Predictor"
+author: "Ryan Abbott"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This project will attempt to predict the winner of the NBA Finals based on several team-based statistics
+```{r}
+Sys.setenv("VROOM_CONNECTION_SIZE" = 262144)
+library("nbastatR")
+library("dplyr")
+library("tidyverse")
+```
+
+```{r}
+#game_logs(seasons = 2023)
+#get_day_nba_league_standings("02/1/2023")
+#get_team_season_stat_splits(year.season_start  = 2015)
+teamdata <- tibble(read.csv("training_data_team_raw.csv"))
+#teamdata <- na.omit(teamdata$ptsPerGameDiff)
+teamdata
+```
+
+## Exploratory Data Analysis: Finding variables
+
+First, I'm thinking that point differentials between a team and their opponents are important to overall success. Lets visualize that.
+
+```{r}
+df <- teamdata %>% select(ptsPerGameDiff, slugSeason, nameTeam, recordOverall, pctWinTeam, nameConference, wins) %>% arrange(desc(ptsPerGameDiff))
+
+plot <- ggplot(df, aes(x=ptsPerGameDiff,y=pctWinTeam,col=nameConference))
+
+plot <- plot + geom_point()
+
+plot
+```
+
+The correlation between these two variables is astoundingly close. The model can be better optimized though.
+
+
+
+```{r}
+ppg <- teamdata %>% select(ptsPerGameTeam, ptsPerGameOpponent, nameTeam, slugSeason, pctWinTeam, wins, nameConference, recordOpponentOver500WinPct, ptsPerGameDiff, recordAheadAtThirdWinPct, recordAwayWinPct, recordAheadAtHalfWinPct, recordHomeWinPct) %>% arrange(desc(ptsPerGameTeam))
+
+plot <- ggplot(ppg, aes(x=ptsPerGameTeam, y=wins, col=nameConference)) + geom_point()
+plot2 <- ggplot(ppg, aes(x=ptsPerGameOpponent, y=wins, col=nameConference)) + geom_point()
+plot3 <- ggplot(ppg, aes(x=recordOpponentOver500WinPct, y=wins, col=nameConference)) + geom_point()
+plot4 <- ggplot(ppg, aes(x=recordAheadAtHalfWinPct, y=wins, col=nameConference)) + geom_point()
+plot5 <- ggplot(ppg, aes(x=recordAwayWinPct, y=wins, col=nameConference)) + geom_point()
+plot6 <- ggplot(ppg, aes(x=recordHomeWinPct, y=wins, col=nameConference)) + geom_point()
+
+
+plot
+plot2
+plot3
+plot4
+plot5
+plot6
+```
+
+Most of these results do not surprise me. Points scored per game is a very relative statistic, as a team with slower pacing may have dozens of possessions less than a team with faster pacing. The same applies for points allowed per game.
+
+A team's record against other teams with a winning record strongly correlates to a better win percentage as well.
+
+One statistic that I am a bit surprised correlates so strongly with total wins is a team's record when they lead the game at halftime. I expected a relatively strong positive correlation, but with half of a game still remaining to play, it is easy to envision that the opposing team can mount a comeback.
+
+
+
+## Model Testing
+```{r}
+champion.lm = lm(wins~ptsPerGameDiff+recordOpponentOver500WinPct+recordAheadAtThirdWinPct+recordAheadAtHalfWinPct+recordAwayWinPct, ppg)
+```
+
+
+```{r}
+summary(champion.lm)
+```
+
+The following code chunk is just to check the normality of the distribution. I may perform some probability analysis at a later time, but for now, this is all I have done.
+
+Evidently, the distribution is not normal when looking at the lesser teams.
+```{r}
+library(s20x)
+normcheck(champion.lm,shapiro.wilk = TRUE)
+cooks20x(champion.lm)
+```
+
+Here is the scatter plot for the final linear model. It is remarkably accurate, with some teams performing slightly worse than predicted but virtually zero performing better than expected.
+```{r}
+pred <- function(x1, x2, x3, x4, x5) {
+  champion.lm$coefficients[1] + champion.lm$coefficients[2]*x1 + champion.lm$coefficients[3]*x2 + champion.lm$coefficients[4]*x3 + champion.lm$coefficients[5]*x4 + champion.lm$coefficients[6]*x5
+}
+
+x=pred(ppg$ptsPerGameDiff,ppg$recordOpponentOver500WinPct,ppg$recordAheadAtThirdWinPct,ppg$recordAheadAtHalfWinPct,ppg$recordAwayWinPct)
+
+plot(wins~x, ppg)
+```
+
+## Model Testing: 2022 season
+
+```{r}
+team_data_test <-  standings(seasons = 2022)
+```
+```{r}
+team_data_test
+ppg_test <- team_data_test %>% select(slugSeason, nameTeam, wins) #%>% arrange(desc(ptsPerGameDiff))
+
+test <-  team_data_test %>% select(recordOpponentOver500WinPct,ptsPerGameDiff,recordAheadAtThirdWinPct,recordAheadAtHalfWinPct,recordAwayWinPct)
+
+ppg_test <- ppg_test %>% mutate(projected_wins = c(pred(test$ptsPerGameDiff, test$recordOpponentOver500WinPct, test$recordAheadAtThirdWinPct, test$recordAheadAtHalfWinPct, test$recordAwayWinPct)))
+
+arrange(ppg_test, desc(projected_wins))
+```
+
+## NBA Teams' Projected Wins, 2023
+```{r}
+team_data_2023 <- standings(seasons = 2023)
+```
+
+```{r}
+ppg_test <- team_data_2023 %>% select(slugSeason, nameTeam, wins)
+
+
+ppg_test <- ppg_test %>% mutate(projected_wins = c(pred(team_data_2023$ptsPerGameDiff, team_data_2023$recordOpponentOver500WinPct, team_data_2023$recordAheadAtThirdWinPct, team_data_2023$recordAheadAtHalfWinPct, team_data_2023$recordAwayWinPct)))
+
+arrange(ppg_test, desc(projected_wins))
+```
+
