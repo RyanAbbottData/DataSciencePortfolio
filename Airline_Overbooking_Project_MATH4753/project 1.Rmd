@@ -1,0 +1,81 @@
+---
+title: "Project 1"
+author: "Ryan Abbott"
+date: "`r Sys.Date()`"
+output: 
+    html_document:
+      toc: yes
+      toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Function creation
+
+```{r}
+ntickets <- function(N, gamma, p) {
+  
+  layout(matrix(c(1,2), nrow=2))
+  n = (N-50):(N+50)
+  nd = qbinom(1-gamma,n, p)
+  nc = qnorm(1-gamma,n*p, sqrt(n*p*(1-p)))
+
+  #Discrete distribution calculation
+  fd <- function(n) {
+    N - qbinom(1-gamma, n, p)
+  }
+
+  nd = rootSolve::uniroot.all(fd, interval=c(N-50,N+50))
+
+  #Normal Approximation
+  fn <- function(n) {
+    N - qnorm(1-gamma,n*p, sqrt(n*p*(1-p))) +0.5
+  }
+
+  nc = rootSolve::uniroot.all(fn, interval=c(N-50,N+50))
+
+  #List
+  print(list(nd = nd, nc=nc, N=N, p=p, gamma=gamma))
+
+  #Plots
+  n = (nd-30):(nd+30)
+  objective_fun_d = 1 - gamma - pbinom(N, n, p)
+  txt_d = paste0("Objective Vs n to find optimal tickets sold " , nd , 
+                 "\n gamma = " , gamma , " N=" , N , " discrete")
+  plot(objective_fun_d~n, type='b', ylab="Objective", xlab="n", main=txt_d)
+  abline(v=nd, h=0, col='red', lwd=3)
+
+  n = (nc-30):(nc+30)
+  objective_fun_c <- function(n) {
+    1 - gamma - pnorm(N+0.5,n*p,sqrt(n*p*(1-p)))
+  }
+  txt_c = paste0("Objective Vs n to find optimal tickets sold " , nc , 
+                 "\n gamma = " , gamma , " N=" , N , " continuous")
+  curve(objective_fun_c, xlim=c(nd-30,nd+30),  ylab="Objective", xlab="n")
+  title(txt_c)
+  abline(v=nc, h=0, col='blue', lwd=2)
+}
+
+ntickets(400, 0.02, 0.95)
+```
+
+## Check message
+
+After documenting the function in my package:
+
+-- R CMD check results --- rabbottpackage 0.1.0 ----
+Duration: 18.2s
+
+0 errors v | 0 warnings v | 0 notes v
+
+R CMD check succeeded
+
+
+## Checking if package works
+```{r}
+library(rabbottpackage)
+rabbottpackage::ntickets(400,0.02,0.95)
+```
+
