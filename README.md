@@ -10,3 +10,5 @@ In this notebook, I attempt to generate a time-series regression model that pred
 In this notebook, I use Google Analytics from an online shop to build a classifier that predicts a customer's buying habits. The quantity of data in each category (purchase, non-purchase) is quite imbalanced, so I also utilized oversampling to eliminate model bias.
 ## Predicting NBA Teams' Wins in a Season
 This R markdown file uses NBAStatR, a Basketball Reference API wrapper, to mine data and perform linear regression to predict the number of wins a team will record in a season.
+## Airplane Ticket Project for MATH4753
+This project was an assignment for my Applied Statistical Methods course at the University of Oklahoma. The problem involved utilizing a binomial experiment and a normal approximation of a binomial to determine how many tickets an airline can sell for a flight before it is overbooked, with the parameters being $\gamma$, the probability  of overbooking, $p$, the probability a customer shows up to the flight, and $N$, the number of seats on the flight.
